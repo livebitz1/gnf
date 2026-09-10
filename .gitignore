@@ -27,8 +27,9 @@
 .env.production
 .env.staging
 
-# Cloudflare Wrangler
+# Cloudflare Wrangler & OpenNext
 .wrangler/
+.open-next/
 
 # Debug
 npm-debug.log*
