@@ -3,14 +3,3 @@ main = ".open-next/worker.js"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 assets = { directory = ".open-next/assets", binding = "ASSETS" }
-
-# Cloudflare D1 SQL Database Binding
-[[d1_databases]]
-binding = "DB"
-database_name = "gnf_esports_d1"
-database_id = "gnf-d1-prod-001"
-
-# Cloudflare KV Binding for Instant Room Pass Retrieval
-[[kv_namespaces]]
-binding = "GNF_ROOM_VAULT"
-id = "gnf-kv-vault-001"
