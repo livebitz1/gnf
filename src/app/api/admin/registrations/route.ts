@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { DataStore } from "@/lib/db/dataStore";
 import { RegistrationRecord } from "@/lib/db/mockDb";
+import { sendExpoPushNotification } from "@/lib/pushService";
+import { requireUser, requireAdmin } from "@/lib/auth/requireAuth";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,6 +15,13 @@ export async function OPTIONS() {
 }
 
 export async function GET(request: Request) {
+  // Full registration records include private data (room credentials, rosters,
+  // contact handles) once approved, so any caller must at least be signed in —
+  // not necessarily an admin, since players legitimately fetch this list to
+  // find their own registrations (filtered client-side by userId).
+  const auth = await requireUser(request);
+  if (!auth.ok) return auth.response;
+
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
   const game = searchParams.get("game");
@@ -49,6 +58,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireUser(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const newReg: RegistrationRecord = {
@@ -67,6 +79,7 @@ export async function POST(request: Request) {
       contactHandle: body.contactHandle || "",
       contactType: body.contactType || "DISCORD",
       deviceInfo: body.deviceInfo || "",
+      pushToken: body.pushToken || "",
       status: body.status || "PENDING_APPROVAL",
       rejectionReason: body.rejectionReason || "",
       roomId: body.roomId || "",
@@ -93,6 +106,9 @@ export async function POST(request: Request) {
 
 // Update / Approve / Reject Registration Status
 export async function PATCH(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { id, status, roomId, roomPass, rejectionReason, reviewedBy } = body;
@@ -116,6 +132,34 @@ export async function PATCH(request: Request) {
 
     const updatedRegs = await DataStore.saveRegistration(updatedReg);
 
+    // If squad is APPROVED, send Expo Push Notification to player's lock screen
+    if (status === "APPROVED") {
+      (async () => {
+        try {
+          const user = await DataStore.findUser(existing.userId);
+          const targetToken = existing.pushToken || user?.pushToken;
+
+          if (targetToken) {
+            await sendExpoPushNotification({
+              to: targetToken,
+              title: `🎉 SQUAD APPROVED: ${updatedReg.teamName || updatedReg.captainIgn || "Squad"}`,
+              body: `Your squad is locked in for ${updatedReg.tournamentTitle}! Official Room ID: ${updatedReg.roomId || "Ready"} & Pass unlocked.`,
+              data: {
+                tournamentId: updatedReg.tournamentId,
+                roomId: updatedReg.roomId,
+                roomPass: updatedReg.roomPass,
+                screen: "tournament",
+              },
+              priority: "high",
+              sound: "default",
+            });
+          }
+        } catch (pushErr) {
+          console.warn("Push notification dispatch error:", pushErr);
+        }
+      })();
+    }
+
     return NextResponse.json(
       { success: true, registration: updatedReg, registrations: updatedRegs },
       { headers: corsHeaders }
@@ -130,6 +174,9 @@ export async function PATCH(request: Request) {
 
 // Delete Registration
 export async function DELETE(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     let id = searchParams.get("id");

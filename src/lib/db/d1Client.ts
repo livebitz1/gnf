@@ -1,29 +1,43 @@
 // Cloudflare D1 SQL & Edge Service Client
 // Account ID: 8b4cf30cd85d25da2d64bd3e7f54b74d
 
-const CF_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID || "8b4cf30cd85d25da2d64bd3e7f54b74d";
-const CF_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN || "cfat_Dfb48Gcovs6OUTrUv1QHD0rpRrv20i2kh9DTAulq39bb3362";
+const CF_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
+const CF_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 let cachedDbId: string | null = null;
+let isD1Available: boolean | null = null;
+let lastFailureTime = 0;
+const FAILURE_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes cooldown before retrying CF D1 if unreachable
 
 // Initialize or get the Cloudflare D1 Database ID
 export async function getOrCreateD1Database(): Promise<string | null> {
   if (cachedDbId) return cachedDbId;
   if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return null;
 
+  // Circuit breaker: if recent failure occurred, skip immediately to avoid lag
+  if (isD1Available === false && Date.now() - lastFailureTime < FAILURE_COOLDOWN_MS) {
+    return null;
+  }
+
   try {
-    // 1. List databases
+    // 1. List databases with 1500ms timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1500);
+
     const listRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/d1/database`, {
       headers: {
         "Authorization": `Bearer ${CF_API_TOKEN}`,
         "Content-Type": "application/json",
       },
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
     const listData = await listRes.json();
     if (listData.success && listData.result) {
       const existing = listData.result.find((d: any) => d.name === "gnf_esports_db");
       if (existing) {
         cachedDbId = existing.uuid;
+        isD1Available = true;
         if (!schemaInitialized) {
           await initD1Schema(cachedDbId!);
         }
@@ -32,6 +46,9 @@ export async function getOrCreateD1Database(): Promise<string | null> {
     }
 
     // 2. Create if not found
+    const createController = new AbortController();
+    const createTimeoutId = setTimeout(() => createController.abort(), 1500);
+
     const createRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/d1/database`, {
       method: "POST",
       headers: {
@@ -39,17 +56,21 @@ export async function getOrCreateD1Database(): Promise<string | null> {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ name: "gnf_esports_db" }),
+      signal: createController.signal,
     });
+    clearTimeout(createTimeoutId);
 
     const createData = await createRes.json();
     if (createData.success && createData.result) {
       cachedDbId = createData.result.uuid;
-      // Initialize schema on create
+      isD1Available = true;
       await initD1Schema(cachedDbId!);
       return cachedDbId;
     }
-  } catch (err) {
-    console.warn("Cloudflare D1 auto-provisioning notice:", err);
+  } catch {
+    // Silently mark D1 unavailable and trigger circuit breaker
+    isD1Available = false;
+    lastFailureTime = Date.now();
   }
   return null;
 }
@@ -59,13 +80,21 @@ export async function executeD1Query<T = any>(
   sql: string,
   params: any[] = []
 ): Promise<{ success: boolean; results: T[]; error?: string }> {
+  // If D1 is known to be offline/unreachable, return immediately in 0ms
+  if (isD1Available === false && Date.now() - lastFailureTime < FAILURE_COOLDOWN_MS) {
+    return { success: false, results: [] };
+  }
+
   try {
     const dbId = await getOrCreateD1Database();
     if (!dbId || !CF_ACCOUNT_ID || !CF_API_TOKEN) {
-      return { success: false, results: [], error: "Cloudflare D1 credentials missing" };
+      return { success: false, results: [] };
     }
 
     const endpoint = `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/d1/database/${dbId}/query`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1500);
+
     const response = await fetch(endpoint, {
       method: "POST",
       headers: {
@@ -76,7 +105,9 @@ export async function executeD1Query<T = any>(
         sql: sql,
         params: params,
       }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
     const data = await response.json();
     if (data.success && data.result?.[0]?.results) {
@@ -85,10 +116,11 @@ export async function executeD1Query<T = any>(
     return {
       success: false,
       results: [],
-      error: data.errors?.[0]?.message || "Cloudflare D1 Query Failed",
     };
-  } catch (err: any) {
-    return { success: false, results: [], error: err.message };
+  } catch {
+    isD1Available = false;
+    lastFailureTime = Date.now();
+    return { success: false, results: [] };
   }
 }
 

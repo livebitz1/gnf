@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { DataStore } from "@/lib/db/dataStore";
 import { ChampionRecord } from "@/lib/db/mockDb";
+import { requireAdmin } from "@/lib/auth/requireAuth";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,6 +38,9 @@ export async function GET() {
 
 // POST /api/admin/champions - Create or update champion card
 export async function POST(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const championId = body.id || "champ-" + Date.now();
@@ -75,6 +79,9 @@ export async function POST(request: Request) {
 
 // PATCH /api/admin/champions - Toggle active status or reorder
 export async function PATCH(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { id, isActive, displayOrder } = body;
@@ -106,6 +113,9 @@ export async function PATCH(request: Request) {
 
 // DELETE /api/admin/champions - Delete a champion card
 export async function DELETE(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const url = new URL(request.url);
     let id = url.searchParams.get("id");

@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     const existingEmail = await DataStore.findUser(cleanEmail);
     if (existingEmail) {
       return NextResponse.json(
-        { success: false, error: "An account with this email already exists" },
+        { success: false, error: "You've already signed up with this email. Please log in instead." },
         { status: 409, headers: corsHeaders }
       );
     }

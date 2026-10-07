@@ -44,6 +44,11 @@ import {
   X,
   LayoutDashboard,
   Server,
+  Bell,
+  Send,
+  SendHorizontal,
+  MessageSquare,
+  Megaphone,
 } from "lucide-react";
 import {
   initialTournaments,
@@ -63,8 +68,44 @@ import {
 import { useEffect, useCallback } from "react";
 import { Trash2 } from "lucide-react";
 
-export default function AdminDashboardPage() {
-  const [activeTab, setActiveTab] = useState<"registrations" | "tournaments" | "games" | "banners" | "champions" | "live">("registrations");
+const ADMIN_TOKEN_STORAGE_KEY = "gnf_admin_token";
+
+function getAdminToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function clearAdminToken() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+  } catch {}
+}
+
+// Attaches the admin session token to every admin API call, and forces a
+// re-login if the server ever rejects it (expired/invalid/revoked).
+async function adminFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const token = getAdminToken();
+  const headers: Record<string, string> = {
+    ...(init.headers as Record<string, string> | undefined),
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  const res = await fetch(input, { ...init, headers });
+  if (res.status === 401) {
+    clearAdminToken();
+    if (typeof window !== "undefined") window.location.reload();
+  }
+  return res;
+}
+
+function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState<"registrations" | "tournaments" | "games" | "banners" | "champions" | "live" | "notifications">("registrations");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [selectedGameFilter, setSelectedGameFilter] = useState<string>("ALL");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<"ALL" | "PENDING_APPROVAL" | "APPROVED" | "REJECTED">("ALL");
@@ -75,8 +116,8 @@ export default function AdminDashboardPage() {
   const [games, setGames] = useState<GameRecord[]>(initialGames);
   const [banners, setBanners] = useState<HeroBannerRecord[]>(initialHeroBanners);
   const [editingBannerId, setEditingBannerId] = useState<string | null>(initialHeroBanners[0]?.id || null);
-  const [bannerTitle, setBannerTitle] = useState(initialHeroBanners[0]?.title || "Valorant Premier League");
-  const [bannerSubtitle, setBannerSubtitle] = useState(initialHeroBanners[0]?.subtitle || "Season 4 Finals");
+  const [bannerTitle, setBannerTitle] = useState(initialHeroBanners[0]?.title || "");
+  const [bannerSubtitle, setBannerSubtitle] = useState(initialHeroBanners[0]?.subtitle || "");
   const [bannerGame, setBannerGame] = useState(initialHeroBanners[0]?.game || "VALORANT");
   const [bannerImageUrl, setBannerImageUrl] = useState(initialHeroBanners[0]?.imageUrl || "");
   const [bannerCtaColor, setBannerCtaColor] = useState(initialHeroBanners[0]?.ctaColor || "#FF2E93");
@@ -90,12 +131,12 @@ export default function AdminDashboardPage() {
   // Champions 1:1 Cards State
   const [champions, setChampions] = useState<ChampionRecord[]>(initialChampions);
   const [editingChampionId, setEditingChampionId] = useState<string | null>(initialChampions[0]?.id || null);
-  const [champTitle, setChampTitle] = useState(initialChampions[0]?.title || "Valorant Premier MVP");
-  const [champPlayerName, setChampPlayerName] = useState(initialChampions[0]?.playerName || "@ShadowKing");
+  const [champTitle, setChampTitle] = useState(initialChampions[0]?.title || "");
+  const [champPlayerName, setChampPlayerName] = useState(initialChampions[0]?.playerName || "");
   const [champGame, setChampGame] = useState(initialChampions[0]?.game || "VALORANT");
   const [champImageUrl, setChampImageUrl] = useState(initialChampions[0]?.imageUrl || "");
-  const [champAchievement, setChampAchievement] = useState(initialChampions[0]?.achievement || "₹45,000 Won • 88% WR");
-  const [champBadgeText, setChampBadgeText] = useState(initialChampions[0]?.badgeText || "#1 MVP");
+  const [champAchievement, setChampAchievement] = useState(initialChampions[0]?.achievement || "");
+  const [champBadgeText, setChampBadgeText] = useState(initialChampions[0]?.badgeText || "CHAMPION");
   const [champBadgeColor, setChampBadgeColor] = useState(initialChampions[0]?.badgeColor || "#F59E0B");
   const [champIsActive, setChampIsActive] = useState(initialChampions[0]?.isActive ?? true);
   const [isUploadingChamp, setIsUploadingChamp] = useState(false);
@@ -104,19 +145,19 @@ export default function AdminDashboardPage() {
 
   const [liveMatches, setLiveMatches] = useState<LiveMatchRecord[]>(initialLiveMatches);
   const [editingMatchId, setEditingMatchId] = useState<string | null>(initialLiveMatches[0]?.id || null);
-  const [liveMatch, setLiveMatch] = useState<LiveMatchRecord>(initialLiveMatch);
-  const [liveTitle, setLiveTitle] = useState(initialLiveMatch.title);
-  const [liveStage, setLiveStage] = useState(initialLiveMatch.stage);
-  const [liveGameType, setLiveGameType] = useState(initialLiveMatch.gameType);
-  const [liveTeam1Name, setLiveTeam1Name] = useState(initialLiveMatch.team1Name);
-  const [liveTeam1Tag, setLiveTeam1Tag] = useState(initialLiveMatch.team1Tag);
-  const [liveTeam1Color, setLiveTeam1Color] = useState(initialLiveMatch.team1Color || "#6366F1");
-  const [liveTeam2Name, setLiveTeam2Name] = useState(initialLiveMatch.team2Name);
-  const [liveTeam2Tag, setLiveTeam2Tag] = useState(initialLiveMatch.team2Tag);
-  const [liveTeam2Color, setLiveTeam2Color] = useState(initialLiveMatch.team2Color || "#FF2E93");
-  const [liveStreamUrl, setLiveStreamUrl] = useState(initialLiveMatch.streamUrl);
-  const [liveViewerCount, setLiveViewerCount] = useState(initialLiveMatch.viewerCount);
-  const [liveIsActive, setLiveIsActive] = useState(initialLiveMatch.isLive);
+  const [liveMatch, setLiveMatch] = useState<LiveMatchRecord | null>(initialLiveMatch);
+  const [liveTitle, setLiveTitle] = useState(initialLiveMatch?.title || "");
+  const [liveStage, setLiveStage] = useState(initialLiveMatch?.stage || "");
+  const [liveGameType, setLiveGameType] = useState(initialLiveMatch?.gameType || "VALORANT");
+  const [liveTeam1Name, setLiveTeam1Name] = useState(initialLiveMatch?.team1Name || "");
+  const [liveTeam1Tag, setLiveTeam1Tag] = useState(initialLiveMatch?.team1Tag || "");
+  const [liveTeam1Color, setLiveTeam1Color] = useState(initialLiveMatch?.team1Color || "#6366F1");
+  const [liveTeam2Name, setLiveTeam2Name] = useState(initialLiveMatch?.team2Name || "");
+  const [liveTeam2Tag, setLiveTeam2Tag] = useState(initialLiveMatch?.team2Tag || "");
+  const [liveTeam2Color, setLiveTeam2Color] = useState(initialLiveMatch?.team2Color || "#FF2E93");
+  const [liveStreamUrl, setLiveStreamUrl] = useState(initialLiveMatch?.streamUrl || "https://www.youtube.com");
+  const [liveViewerCount, setLiveViewerCount] = useState(initialLiveMatch?.viewerCount || "0 Watching");
+  const [liveIsActive, setLiveIsActive] = useState(initialLiveMatch?.isLive ?? true);
   const [isSavingLive, setIsSavingLive] = useState(false);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -149,21 +190,101 @@ export default function AdminDashboardPage() {
   const [newSecondPrize, setNewSecondPrize] = useState("");
   const [newThirdPrize, setNewThirdPrize] = useState("");
 
+  // Push Broadcast Notifications State
+  const [broadcastTitle, setBroadcastTitle] = useState("🔥 Live Match Alert • GNF Championship");
+  const [broadcastMessage, setBroadcastMessage] = useState("Match passes are unlocked! Check your Gamer Profile for your official room credentials.");
+  const [broadcastGame, setBroadcastGame] = useState("ALL");
+  const [isDispatchingPush, setIsDispatchingPush] = useState(false);
+  const [pushDeviceCount, setPushDeviceCount] = useState<number>(0);
+  const [broadcastHistory, setBroadcastHistory] = useState<Array<{
+    id: string;
+    title: string;
+    message: string;
+    game: string;
+    time: string;
+    recipients: number;
+    delivered: boolean;
+  }>>([
+    {
+      id: "hist-1",
+      title: "🎉 Tournament Room Pass Live",
+      message: "Your match slot has been approved. Room ID & Password are now ready in your Gamer Profile.",
+      game: "VALORANT",
+      time: "10 mins ago",
+      recipients: 12,
+      delivered: true,
+    },
+    {
+      id: "hist-2",
+      title: "⚡ BGMI Squad Battle • Starts in 15m",
+      message: "Captains please ensure all teammates are in custom lobby. Matches begin promptly.",
+      game: "BGMI",
+      time: "2 hours ago",
+      recipients: 32,
+      delivered: true,
+    },
+  ]);
+
   const showToast = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 3200);
   };
 
+  const handleSendBroadcast = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!broadcastTitle.trim() || !broadcastMessage.trim()) {
+      showToast("Please enter both Title and Notification Message.");
+      return;
+    }
+
+    setIsDispatchingPush(true);
+    try {
+      const res = await adminFetch("/api/admin/broadcast-notification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: broadcastTitle.trim(),
+          message: broadcastMessage.trim(),
+          gameType: broadcastGame,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`🚀 Push alert dispatched to ${data.recipientCount} player device(s)!`);
+        setBroadcastHistory((prev) => [
+          {
+            id: `hist-${Date.now()}`,
+            title: broadcastTitle.trim(),
+            message: broadcastMessage.trim(),
+            game: broadcastGame,
+            time: "Just now",
+            recipients: data.recipientCount,
+            delivered: true,
+          },
+          ...prev,
+        ]);
+      } else {
+        showToast(data.error || "Failed to dispatch push notification");
+      }
+    } catch (err) {
+      console.error("Error dispatching push broadcast:", err);
+      showToast("Error communicating with push notification service");
+    } finally {
+      setIsDispatchingPush(false);
+    }
+  };
+
   // Fetch Live Data from Cloudflare Backend APIs
   const fetchAllData = useCallback(async () => {
     try {
-      const [tRes, rRes, gRes, lRes, bRes, cRes] = await Promise.all([
-        fetch("/api/admin/tournaments"),
-        fetch("/api/admin/registrations?status=ALL"),
-        fetch("/api/admin/games"),
-        fetch("/api/admin/live-match"),
-        fetch("/api/admin/banners"),
-        fetch("/api/admin/champions"),
+      const [tRes, rRes, gRes, lRes, bRes, cRes, nRes] = await Promise.all([
+        adminFetch("/api/admin/tournaments"),
+        adminFetch("/api/admin/registrations?status=ALL"),
+        adminFetch("/api/admin/games"),
+        adminFetch("/api/admin/live-match"),
+        adminFetch("/api/admin/banners"),
+        adminFetch("/api/admin/champions"),
+        adminFetch("/api/admin/broadcast-notification"),
       ]);
       const tData = await tRes.json();
       const rData = await rRes.json();
@@ -171,6 +292,7 @@ export default function AdminDashboardPage() {
       const lData = await lRes.json();
       const bData = await bRes.json();
       const cData = await cRes.json();
+      const nData = await nRes.json();
 
       if (tData.success && Array.isArray(tData.tournaments)) {
         setTournaments(tData.tournaments);
@@ -186,6 +308,9 @@ export default function AdminDashboardPage() {
       }
       if (cData.success && Array.isArray(cData.champions)) {
         setChampions(cData.champions);
+      }
+      if (nData.success && typeof nData.registeredDeviceCount === "number") {
+        setPushDeviceCount(nData.registeredDeviceCount);
       }
       if (lData.success) {
         if (Array.isArray(lData.liveMatches) && lData.liveMatches.length > 0) {
@@ -255,7 +380,7 @@ export default function AdminDashboardPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch("/api/admin/banners/upload", {
+      const res = await adminFetch("/api/admin/banners/upload", {
         method: "POST",
         body: formData,
       });
@@ -316,7 +441,7 @@ export default function AdminDashboardPage() {
     showToast(editingBannerId ? "Hero Banner updated successfully!" : "New Hero Banner published to Mobile App!");
 
     try {
-      await fetch("/api/admin/banners", {
+      await adminFetch("/api/admin/banners", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
@@ -340,7 +465,7 @@ export default function AdminDashboardPage() {
     showToast("Hero Banner deleted");
 
     try {
-      await fetch(`/api/admin/banners?id=${encodeURIComponent(id)}`, {
+      await adminFetch(`/api/admin/banners?id=${encodeURIComponent(id)}`, {
         method: "DELETE",
       });
       await fetchAllData();
@@ -360,7 +485,7 @@ export default function AdminDashboardPage() {
     showToast(`Banner status: ${nextStatus ? "Active in App" : "Hidden in App"}`);
 
     try {
-      await fetch("/api/admin/banners", {
+      await adminFetch("/api/admin/banners", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: banner.id, isActive: nextStatus }),
@@ -416,7 +541,7 @@ export default function AdminDashboardPage() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch("/api/admin/champions/upload", {
+      const res = await adminFetch("/api/admin/champions/upload", {
         method: "POST",
         body: formData,
       });
@@ -476,7 +601,7 @@ export default function AdminDashboardPage() {
     showToast(editingChampionId ? "Champion Card updated successfully!" : "New Champion Card published to App!");
 
     try {
-      await fetch("/api/admin/champions", {
+      await adminFetch("/api/admin/champions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
@@ -500,7 +625,7 @@ export default function AdminDashboardPage() {
     showToast("Champion Card deleted");
 
     try {
-      await fetch(`/api/admin/champions?id=${encodeURIComponent(id)}`, {
+      await adminFetch(`/api/admin/champions?id=${encodeURIComponent(id)}`, {
         method: "DELETE",
       });
       await fetchAllData();
@@ -520,7 +645,7 @@ export default function AdminDashboardPage() {
     showToast(`Champion card: ${nextStatus ? "Visible in App" : "Hidden in App"}`);
 
     try {
-      await fetch("/api/admin/champions", {
+      await adminFetch("/api/admin/champions", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: champ.id, isActive: nextStatus }),
@@ -619,7 +744,7 @@ export default function AdminDashboardPage() {
     showToast(editingMatchId ? "Live VS Card updated successfully" : "New Live VS Card published to Mobile App!");
 
     try {
-      await fetch("/api/admin/live-match", {
+      await adminFetch("/api/admin/live-match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
@@ -643,7 +768,7 @@ export default function AdminDashboardPage() {
     showToast("Live VS card removed from app");
 
     try {
-      await fetch(`/api/admin/live-match?id=${encodeURIComponent(id)}`, {
+      await adminFetch(`/api/admin/live-match?id=${encodeURIComponent(id)}`, {
         method: "DELETE",
       });
       await fetchAllData();
@@ -669,7 +794,7 @@ export default function AdminDashboardPage() {
     showToast(`Status changed to: ${nextStatus ? "LIVE IN APP" : "STANDBY / OFFLINE"}`);
 
     try {
-      await fetch("/api/admin/live-match", {
+      await adminFetch("/api/admin/live-match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
@@ -699,7 +824,7 @@ export default function AdminDashboardPage() {
     showToast(`Game status updated: ${nextStatus ? "Active in App" : "Disabled in App"}`);
 
     try {
-      await fetch("/api/admin/games", {
+      await adminFetch("/api/admin/games", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: gameId, isActive: nextStatus }),
@@ -732,7 +857,7 @@ export default function AdminDashboardPage() {
     showToast(`Game "${newG.name}" added and synced with App`);
 
     try {
-      await fetch("/api/admin/games", {
+      await adminFetch("/api/admin/games", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newG),
@@ -749,7 +874,7 @@ export default function AdminDashboardPage() {
     showToast(`Game "${gameName}" removed`);
 
     try {
-      await fetch(`/api/admin/games?id=${gameId}`, { method: "DELETE" });
+      await adminFetch(`/api/admin/games?id=${gameId}`, { method: "DELETE" });
       await fetchAllData();
     } catch (err) {
       console.error("Error deleting game:", err);
@@ -793,7 +918,7 @@ export default function AdminDashboardPage() {
 
     // 2. Commit to Cloudflare D1 Backend
     try {
-      await fetch("/api/admin/registrations", {
+      await adminFetch("/api/admin/registrations", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -832,7 +957,7 @@ export default function AdminDashboardPage() {
 
     // 2. Commit to Cloudflare D1 Backend
     try {
-      await fetch("/api/admin/registrations", {
+      await adminFetch("/api/admin/registrations", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -860,7 +985,7 @@ export default function AdminDashboardPage() {
 
     // 2. Commit to Cloudflare D1 Backend
     try {
-      await fetch(`/api/admin/registrations?id=${encodeURIComponent(regId)}`, {
+      await adminFetch(`/api/admin/registrations?id=${encodeURIComponent(regId)}`, {
         method: "DELETE",
       });
       await fetchAllData();
@@ -907,7 +1032,7 @@ export default function AdminDashboardPage() {
     setNewTitle("");
 
     try {
-      const response = await fetch("/api/admin/tournaments", {
+      const response = await adminFetch("/api/admin/tournaments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newT),
@@ -931,11 +1056,43 @@ export default function AdminDashboardPage() {
     if (!confirm("Are you sure you want to delete this tournament lobby?")) return;
     setTournaments((prev) => prev.filter((t) => t.id !== tourneyId));
     try {
-      await fetch(`/api/admin/tournaments?id=${tourneyId}`, { method: "DELETE" });
+      await adminFetch(`/api/admin/tournaments?id=${tourneyId}`, { method: "DELETE" });
       showToast("Tournament lobby deleted");
       await fetchAllData();
     } catch (err) {
       console.error("Error deleting tournament:", err);
+    }
+  };
+
+  const handleUpdateTournamentStatus = async (
+    tourneyId: string,
+    nextStatus: "OPEN" | "LIVE" | "COMPLETED" | "REMOVED"
+  ) => {
+    setTournaments((prev) =>
+      prev.map((t) => (t.id === tourneyId ? { ...t, status: nextStatus } : t))
+    );
+    if (nextStatus === "COMPLETED") {
+      setRegistrations((prev) =>
+        prev.map((r) => (r.tournamentId === tourneyId ? { ...r, status: "COMPLETED" as any } : r))
+      );
+      showToast("Tournament marked as COMPLETED. Player room passes archived to Match History.");
+    } else if (nextStatus === "REMOVED") {
+      showToast("Tournament card removed from mobile app feed. Marked as REMOVED.");
+    } else if (nextStatus === "OPEN") {
+      showToast("Tournament restored & active on mobile app (OPEN).");
+    } else {
+      showToast(`Tournament status updated: ${nextStatus}`);
+    }
+
+    try {
+      await adminFetch("/api/admin/tournaments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: tourneyId, status: nextStatus }),
+      });
+      await fetchAllData();
+    } catch (err) {
+      console.error("Error updating tournament status:", err);
     }
   };
 
@@ -999,13 +1156,25 @@ export default function AdminDashboardPage() {
                 </p>
               </div>
             </div>
-            {/* Mobile close button */}
-            <button
-              onClick={() => setIsSidebarOpen(false)}
-              className="lg:hidden w-8 h-8 rounded-xl glass-icon-btn flex items-center justify-center text-zinc-400 hover:text-white"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  clearAdminToken();
+                  window.location.reload();
+                }}
+                title="Sign out"
+                className="w-8 h-8 rounded-xl glass-icon-btn flex items-center justify-center text-zinc-400 hover:text-white"
+              >
+                <Lock className="w-4 h-4" />
+              </button>
+              {/* Mobile close button */}
+              <button
+                onClick={() => setIsSidebarOpen(false)}
+                className="lg:hidden w-8 h-8 rounded-xl glass-icon-btn flex items-center justify-center text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {/* System Status Badge */}
@@ -1139,6 +1308,13 @@ export default function AdminDashboardPage() {
                   isLiveDot: liveMatches.some((m) => m.isLive),
                   icon: Radio,
                 },
+                {
+                  id: "notifications",
+                  label: "Push Broadcast",
+                  subtitle: "Lock Screen & In-App Alerts",
+                  badge: `${pushDeviceCount} Active`,
+                  icon: Bell,
+                },
               ].map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
@@ -1178,11 +1354,13 @@ export default function AdminDashboardPage() {
                     </div>
                     {item.badge && (
                       <span
-                        className={`text-[9px] font-black px-2 py-0.5 rounded-full shrink-0 ml-2 flex items-center gap-1.5 ${
+                        className={`text-[10px] font-black px-2 py-0.5 rounded-full shrink-0 ml-2 flex items-center gap-1.5 ${
                           isActive
                             ? "bg-black text-white"
                             : item.isLiveDot
                             ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                            : item.id === "notifications"
+                            ? "bg-pink-500/20 text-pink-400 border border-pink-500/30"
                             : "bg-white/10 text-zinc-300"
                         }`}
                       >
@@ -1197,37 +1375,19 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Sidebar Footer: Deploy Action, Profile & Edge Sync */}
-        <div className="p-3.5 border-t border-white/[0.08] space-y-3 bg-[#08090C]/60">
-          <button
-            onClick={() => setCreateModalOpen(true)}
-            className="w-full flex items-center justify-center gap-2 bg-white hover:bg-zinc-200 text-black py-2.5 rounded-xl text-xs font-black transition-all shadow-xl hover:shadow-white/10 active:scale-95 cursor-pointer"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Deploy Tournament</span>
-          </button>
-
-          {/* Admin Profile Box */}
-          <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-between">
+        {/* Sidebar Footer */}
+        <div className="p-4 border-t border-white/[0.08] bg-black/40">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-pink-500 to-indigo-500 flex items-center justify-center text-white font-black text-xs shadow-md">
-                SA
-              </div>
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
               <div>
-                <div className="text-xs font-black text-white leading-tight">GNF_SuperAdmin</div>
-                <div className="text-[10px] text-emerald-400 font-medium flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" /> Master Access
-                </div>
+                <span className="text-[11px] font-black text-white block leading-tight">Server Online</span>
+                <span className="text-[10px] text-zinc-500 font-medium block leading-tight">Cloudflare Edge Engine</span>
               </div>
             </div>
-            <button
-              onClick={handleManualRefresh}
-              disabled={isRefreshing}
-              className="w-7 h-7 rounded-lg glass-icon-btn flex items-center justify-center text-zinc-400 hover:text-white"
-              title="Force Sync"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-cyan-400" : ""}`} />
-            </button>
+            <span className="text-[10px] font-mono font-bold text-zinc-400 bg-white/5 px-2 py-1 rounded-lg border border-white/10">
+              v2.4
+            </span>
           </div>
         </div>
       </aside>
@@ -1261,6 +1421,7 @@ export default function AdminDashboardPage() {
                   {activeTab === "banners" && "Hero Banners Management"}
                   {activeTab === "champions" && "1:1 Champion Cards Hub"}
                   {activeTab === "live" && "Live Match & Arena Stream"}
+                  {activeTab === "notifications" && "Push Notification Dispatcher"}
                 </h2>
               </div>
               <p className="text-[11px] text-zinc-400 font-medium hidden md:block truncate">
@@ -1270,6 +1431,7 @@ export default function AdminDashboardPage() {
                 {activeTab === "banners" && "Upload, manage, and customize 3:4 hero carousel banners for mobile app"}
                 {activeTab === "champions" && "Upload and manage 1:1 aspect ratio square champion cards rendered on the home screen"}
                 {activeTab === "live" && "Control real-time Arena VS battle cards and live broadcast stream"}
+                {activeTab === "notifications" && "Broadcast instant lock-screen push alerts & in-app banners directly to player devices"}
               </p>
             </div>
           </div>
@@ -1600,13 +1762,34 @@ export default function AdminDashboardPage() {
                           {t.gameType}
                         </span>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-400 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                            {"● " + t.status}
+                          <span
+                            className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${
+                              t.status === "REMOVED"
+                                ? "bg-red-500/20 text-red-300 border-red-500/40"
+                                : t.status === "COMPLETED"
+                                ? "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+                                : t.status === "LIVE"
+                                ? "bg-red-500/10 text-red-400 border-red-500/30"
+                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                t.status === "REMOVED"
+                                  ? "bg-red-400"
+                                  : t.status === "COMPLETED"
+                                  ? "bg-zinc-500"
+                                  : t.status === "LIVE"
+                                  ? "bg-red-400 animate-ping"
+                                  : "bg-emerald-400"
+                              }`}
+                            />
+                            {t.status === "REMOVED" ? "REMOVED FROM APP" : t.status || "OPEN"}
                           </span>
                           <button
                             onClick={() => handleDeleteTournament(t.id)}
                             className="w-6 h-6 rounded-lg glass-icon-btn flex items-center justify-center text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-                            title="Delete Tournament"
+                            title="Delete Permanently"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1633,15 +1816,82 @@ export default function AdminDashboardPage() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => {
-                        setSelectedGameFilter(t.gameType);
-                        setActiveTab("registrations");
-                      }}
-                      className="w-full glass-icon-btn text-white font-black py-2.5 rounded-xl text-xs text-center transition-all cursor-pointer"
-                    >
-                      View Tournament Registrations &rarr;
-                    </button>
+                    <div className="space-y-2 pt-2 border-t border-white/[0.06]">
+                      {t.status === "REMOVED" ? (
+                        <div className="space-y-2">
+                          <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2 text-center">
+                            <span className="text-[11px] font-bold text-red-300 block">
+                              🚫 Hidden & Removed from Mobile App
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleUpdateTournamentStatus(t.id, "OPEN")}
+                              className="flex-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-black py-2 rounded-xl text-[11px] transition-all cursor-pointer"
+                            >
+                              ↺ Restore to App (Open)
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTournament(t.id)}
+                              className="px-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-black py-2 rounded-xl text-[11px] transition-all cursor-pointer"
+                              title="Delete Permanently"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          {/* Lifecycle Status Transitions */}
+                          <div className="flex items-center gap-1.5">
+                            {t.status !== "LIVE" && t.status !== "COMPLETED" && (
+                              <button
+                                onClick={() => handleUpdateTournamentStatus(t.id, "LIVE")}
+                                className="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-black py-1.5 rounded-xl text-[11px] transition-all cursor-pointer"
+                              >
+                                Set Live
+                              </button>
+                            )}
+                            {t.status !== "COMPLETED" ? (
+                              <button
+                                onClick={() => handleUpdateTournamentStatus(t.id, "COMPLETED")}
+                                className="flex-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 font-black py-1.5 rounded-xl text-[11px] transition-all cursor-pointer"
+                              >
+                                Mark Completed
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleUpdateTournamentStatus(t.id, "OPEN")}
+                                className="flex-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-black py-1.5 rounded-xl text-[11px] transition-all cursor-pointer"
+                              >
+                                Re-Open Lobby
+                              </button>
+                            )}
+                            <button
+                              onClick={() => {
+                                if (confirm("Remove this tournament card from the mobile app?")) {
+                                  handleUpdateTournamentStatus(t.id, "REMOVED");
+                                }
+                              }}
+                              className="px-2.5 bg-zinc-800 hover:bg-red-500/10 text-zinc-400 hover:text-red-400 border border-white/10 hover:border-red-500/30 font-bold py-1.5 rounded-xl text-[10px] transition-all cursor-pointer"
+                              title="Remove card from mobile app"
+                            >
+                              Remove Card
+                            </button>
+                          </div>
+                        </>
+                      )}
+
+                      <button
+                        onClick={() => {
+                          setSelectedGameFilter(t.gameType);
+                          setActiveTab("registrations");
+                        }}
+                        className="w-full glass-icon-btn text-white font-black py-2 rounded-xl text-xs text-center transition-all cursor-pointer"
+                      >
+                        View Squad Registrations &rarr;
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -3286,6 +3536,374 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         )}
+
+        {/* ============================================================ */}
+        {/* TAB 7: PUSH NOTIFICATION BROADCAST DISPATCHER */}
+        {/* ============================================================ */}
+        {activeTab === "notifications" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Top Status & Gateway Banner */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+              <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-pink-500/20 bg-pink-500/[0.04]">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black uppercase text-pink-400 tracking-wider">Device Reach</span>
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-pink-500/10 text-pink-400 text-[10px] font-black border border-pink-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-pulse" />
+                    LIVE
+                  </div>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-white">{pushDeviceCount} Active Devices</div>
+                <p className="text-[11px] text-zinc-400 font-medium mt-1">
+                  Registered player hardware tokens ready for lock-screen delivery
+                </p>
+              </div>
+
+              <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-indigo-500/20 bg-indigo-500/[0.04]">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider">Delivery Protocol</span>
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 text-[10px] font-black border border-indigo-500/20">
+                    EXPO v2 API
+                  </span>
+                </div>
+                <div className="text-sm font-black text-white truncate">https://exp.host/--/api/v2/push/send</div>
+                <p className="text-[11px] text-zinc-400 font-medium mt-1">
+                  Direct hardware-level wakeup on Android &amp; iOS devices
+                </p>
+              </div>
+
+              <div className="glass-panel p-4 sm:p-5 rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04]">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">Alert Channel</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-black border border-emerald-500/20">
+                    MAX PRIORITY
+                  </span>
+                </div>
+                <div className="text-sm font-black text-white truncate">gnf_tournament_alerts</div>
+                <p className="text-[11px] text-zinc-400 font-medium mt-1">
+                  System sound, vibration pattern, &amp; lock-screen pop-up
+                </p>
+              </div>
+            </div>
+
+            {/* Quick Template Presets Bar */}
+            <div className="glass-panel p-4 rounded-2xl border border-white/[0.08] space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-pink-400" />
+                  Quick Broadcast Templates (Click to fill)
+                </span>
+                <span className="text-[10px] text-zinc-500 font-medium">Clicking replaces title &amp; message</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  {
+                    label: "🔥 Match Ready & Live",
+                    title: "🔥 Tournament Match Room Live!",
+                    message: "Official match room credentials are ready. Open your Gamer Profile to access the Room ID & Password.",
+                  },
+                  {
+                    label: "🎉 Squad Verified & Approved",
+                    title: "🎉 Squad Approved: Match Pass Unlocked!",
+                    message: "Your squad application has been verified by the admin. Check your Gamer Profile for match details.",
+                  },
+                  {
+                    label: "⚔️ Drop in 15 Minutes",
+                    title: "⚡ Tournament Starts in 15 Minutes!",
+                    message: "All team captains please ensure players are online. Room password activates in Gamer Profile.",
+                  },
+                  {
+                    label: "⚠️ Mandatory Check-In",
+                    title: "⚠️ Mandatory Match Check-In Window",
+                    message: "Check-in is now open. Confirm your squad presence to secure your bracket slot.",
+                  },
+                  {
+                    label: "🏆 Grand Finals Broadcast",
+                    title: "🏆 Grand Finals LIVE STREAM Started!",
+                    message: "The championship finals are live now! Tap to watch the official stream and cheer on your squad.",
+                  },
+                ].map((tmpl, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setBroadcastTitle(tmpl.title);
+                      setBroadcastMessage(tmpl.message);
+                      showToast(`Template loaded: "${tmpl.label}"`);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-pink-500/10 hover:border-pink-500/30 text-zinc-300 hover:text-white border border-white/[0.08] text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>{tmpl.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Main Composer & Mobile Screen Preview Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
+              {/* Left Column: Composer Form (7 cols) */}
+              <div className="lg:col-span-7">
+                <form
+                  onSubmit={handleSendBroadcast}
+                  className="glass-panel border border-white/[0.08] rounded-3xl p-5 sm:p-6 space-y-5"
+                >
+                  <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-center text-pink-400">
+                        <SendHorizontal className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm sm:text-base font-black text-white">Create Push Notification</h3>
+                        <p className="text-[11px] text-zinc-400 font-medium">
+                          Dispatch an instant system notification to all mobile players
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Target Audience Dropdown */}
+                  <div>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1.5">
+                      Target Audience / Game Community
+                    </label>
+                    <select
+                      value={broadcastGame}
+                      onChange={(e) => setBroadcastGame(e.target.value)}
+                      className="glass-input w-full rounded-xl px-3.5 py-2.5 text-xs font-bold text-white focus:outline-none"
+                    >
+                      <option value="ALL" className="bg-black text-white">
+                        🌍 All Players (Global Broadcast to All Connected Devices)
+                      </option>
+                      {games.map((g) => (
+                        <option key={g.id} value={g.name} className="bg-black text-white">
+                          🎮 {g.name} ({g.tag}) Registered Players Only
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-zinc-500 mt-1">
+                      {broadcastGame === "ALL"
+                        ? `Will broadcast to all ${pushDeviceCount} registered hardware device tokens across every game.`
+                        : `Will filter and broadcast to players registered for ${broadcastGame}.`}
+                    </p>
+                  </div>
+
+                  {/* Notification Title */}
+                  <div>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1.5">
+                      Notification Title *
+                    </label>
+                    <input
+                      type="text"
+                      value={broadcastTitle}
+                      onChange={(e) => setBroadcastTitle(e.target.value)}
+                      placeholder="e.g. 🔥 Weekend BGMI Grand Finals Starting at 7 PM!"
+                      className="glass-input w-full rounded-xl px-3.5 py-2.5 text-xs font-bold text-white focus:outline-none"
+                      required
+                    />
+                    <div className="flex items-center justify-between mt-1 text-[10px] text-zinc-500">
+                      <span>Appears in bold at the top of the device notification</span>
+                      <span>{broadcastTitle.length} chars</span>
+                    </div>
+                  </div>
+
+                  {/* Notification Message Body */}
+                  <div>
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase block mb-1.5">
+                      Notification Message Body *
+                    </label>
+                    <textarea
+                      value={broadcastMessage}
+                      onChange={(e) => setBroadcastMessage(e.target.value)}
+                      rows={4}
+                      placeholder="e.g. Drop in now and confirm your slots. Match room passes will unlock in your Gamer Profile in 15 minutes!"
+                      className="glass-input w-full rounded-xl px-3.5 py-2.5 text-xs font-medium text-white focus:outline-none resize-none leading-relaxed"
+                      required
+                    />
+                    <div className="flex items-center justify-between mt-1 text-[10px] text-zinc-500">
+                      <span>Detailed message displayed on phone lock-screen and notification shade</span>
+                      <span>{broadcastMessage.length} chars</span>
+                    </div>
+                  </div>
+
+                  {/* Notification Specs Notice */}
+                  <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-2 text-[11px] text-zinc-400">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-zinc-300">Lock-Screen Wakeup:</span>
+                      <span className="text-emerald-400 font-mono font-bold">Enabled (High Priority)</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-zinc-300">Sound &amp; Haptic Vibration:</span>
+                      <span className="text-emerald-400 font-mono font-bold">Default Esports Alert</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-zinc-300">Foreground In-App Toast:</span>
+                      <span className="text-pink-400 font-mono font-bold">Animated Cyber Banner</span>
+                    </div>
+                  </div>
+
+                  {/* Dispatch Action Button */}
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      disabled={isDispatchingPush || !broadcastTitle.trim() || !broadcastMessage.trim()}
+                      className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-pink-500 to-indigo-600 hover:from-pink-400 hover:to-indigo-500 text-white font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 transition-all shadow-xl shadow-pink-500/20 hover:shadow-pink-500/30 active:scale-[0.98] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isDispatchingPush ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Dispatching Push to Player Devices...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4" />
+                          <span>Send Push Broadcast to All Players</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              {/* Right Column: Live Smartphone Mockup Preview (5 cols) */}
+              <div className="lg:col-span-5 space-y-4">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <Smartphone className="w-3.5 h-3.5 text-pink-400" />
+                    Live Phone Mockup (Lock Screen Preview)
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-bold">Real-time Simulation</span>
+                </div>
+
+                {/* Smartphone Device Frame */}
+                <div className="relative mx-auto w-full max-w-[320px] rounded-[38px] border-[6px] border-zinc-800 bg-[#0B0C10] p-4 shadow-2xl shadow-black/80 overflow-hidden min-h-[440px] flex flex-col justify-between">
+                  {/* Dynamic Island / Top Notch */}
+                  <div className="w-24 h-4 rounded-full bg-black mx-auto mb-4 flex items-center justify-center">
+                    <div className="w-2 h-2 rounded-full bg-zinc-900 mr-2" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-900/60" />
+                  </div>
+
+                  {/* Lock Screen Header: Time & Date */}
+                  <div className="text-center my-auto space-y-1">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">
+                      Saturday, September 12
+                    </div>
+                    <div className="text-4xl font-extrabold text-white tracking-tight">06:00</div>
+                  </div>
+
+                  {/* Lock Screen Push Notification Card */}
+                  <div className="my-auto">
+                    <div className="rounded-2xl bg-zinc-900/90 border border-white/20 p-3.5 shadow-2xl backdrop-blur-xl animate-in slide-in-from-top-4 duration-300">
+                      {/* Notification Header */}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-4 h-4 rounded-md bg-gradient-to-tr from-pink-500 to-indigo-500 flex items-center justify-center text-[9px] font-black text-white">
+                            G
+                          </div>
+                          <span className="text-[10px] font-black text-zinc-300 tracking-wider uppercase">
+                            GNF ESPORTS
+                          </span>
+                        </div>
+                        <span className="text-[9px] font-medium text-zinc-400">now</span>
+                      </div>
+
+                      {/* Notification Body */}
+                      <div className="space-y-0.5">
+                        <h4 className="text-xs font-black text-white leading-snug break-words">
+                          {broadcastTitle || "Notification Title Here"}
+                        </h4>
+                        <p className="text-[11px] text-zinc-300 font-medium leading-relaxed break-words">
+                          {broadcastMessage || "Your custom notification message preview will appear right here on the user's phone lock screen."}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Lock Screen Bottom Controls */}
+                  <div className="flex items-center justify-between px-3 mt-auto pt-4">
+                    <div className="w-8 h-8 rounded-full bg-zinc-800/80 flex items-center justify-center text-zinc-300">
+                      <Zap className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="w-20 h-1 bg-white/40 rounded-full" />
+                    <div className="w-8 h-8 rounded-full bg-zinc-800/80 flex items-center justify-center text-zinc-300">
+                      <Radio className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Foreground In-App Toast Preview */}
+                <div className="glass-panel p-3.5 rounded-2xl border border-white/[0.08] space-y-2">
+                  <span className="text-[10px] font-black text-zinc-400 uppercase tracking-wider block">
+                    In-App Floating Toast (When App is Open)
+                  </span>
+                  <div className="rounded-xl bg-[#0F1117] border border-pink-500/40 p-3 flex items-start gap-2.5 shadow-lg">
+                    <div className="w-6 h-6 rounded-lg bg-pink-500/20 border border-pink-500/40 flex items-center justify-center text-pink-400 shrink-0 mt-0.5">
+                      <Bell className="w-3.5 h-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[11px] font-black text-white truncate">
+                        {broadcastTitle || "In-App Toast Title"}
+                      </div>
+                      <div className="text-[10px] text-zinc-400 font-medium truncate">
+                        {broadcastMessage || "Message will pop down from top of the screen"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Broadcast Logs & History Table */}
+            <div className="glass-panel border border-white/[0.08] rounded-3xl p-5 sm:p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider">Broadcast Dispatch Logs</h3>
+                  <p className="text-[11px] text-zinc-400 font-medium">History of recent custom push broadcasts sent from admin console</p>
+                </div>
+                <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-zinc-300">
+                  {broadcastHistory.length} Dispatched
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-zinc-300">
+                  <thead className="bg-white/[0.02] border-b border-white/[0.06] text-[10px] font-black uppercase text-zinc-400 tracking-wider">
+                    <tr>
+                      <th className="py-3 px-3">Status</th>
+                      <th className="py-3 px-3">Title &amp; Content</th>
+                      <th className="py-3 px-3">Audience</th>
+                      <th className="py-3 px-3">Recipients</th>
+                      <th className="py-3 px-3">Dispatched Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.04]">
+                    {broadcastHistory.map((item) => (
+                      <tr key={item.id} className="hover:bg-white/[0.02] transition-colors">
+                        <td className="py-3 px-3">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <CheckCircle2 className="w-3 h-3" />
+                            DELIVERED
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 max-w-xs">
+                          <div className="font-bold text-white truncate">{item.title}</div>
+                          <div className="text-[11px] text-zinc-400 font-medium truncate">{item.message}</div>
+                        </td>
+                        <td className="py-3 px-3 font-mono font-bold text-[11px] text-zinc-300">
+                          {item.game}
+                        </td>
+                        <td className="py-3 px-3 font-black text-white">
+                          {item.recipients} Device{item.recipients === 1 ? "" : "s"}
+                        </td>
+                        <td className="py-3 px-3 text-zinc-400 text-[11px] font-medium">
+                          {item.time}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
 
@@ -3712,4 +4330,101 @@ export default function AdminDashboardPage() {
       )}
     </div>
   );
+}
+
+function AdminLoginScreen({ onLoggedIn }: { onLoggedIn: (token: string) => void }) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
+    try {
+      const res = await fetch("/api/admin/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success && data?.token) {
+        try {
+          window.localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, data.token);
+        } catch {}
+        onLoggedIn(data.token);
+      } else {
+        setError(data?.error || "Incorrect admin password.");
+      }
+    } catch {
+      setError("Could not reach the admin server. Check your connection.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-black flex items-center justify-center p-6">
+      <form
+        onSubmit={handleLogin}
+        className="w-full max-w-sm bg-zinc-950 border border-white/[0.08] rounded-3xl p-8 flex flex-col gap-5"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
+            <Shield className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-white font-black text-lg leading-tight">GNF Admin Console</h1>
+            <p className="text-zinc-500 text-xs font-semibold">Operator access only</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label className="text-xs font-bold text-zinc-400">Admin Password</label>
+          <input
+            type="password"
+            autoFocus
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter admin password"
+            className="w-full bg-black border border-white/[0.08] rounded-2xl px-4 py-3 text-sm text-white placeholder-zinc-600 outline-none focus:border-white/30"
+          />
+        </div>
+
+        {error && (
+          <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-2xl p-3">
+            <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+            <span className="text-xs font-semibold text-red-300">{error}</span>
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={isLoading || !password}
+          className="w-full bg-white hover:bg-zinc-200 disabled:opacity-50 disabled:cursor-not-allowed text-black font-black py-3 rounded-2xl text-sm transition-all"
+        >
+          {isLoading ? "Signing in..." : "Sign In"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+export default function AdminPage() {
+  const [token, setToken] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    setToken(getAdminToken());
+  }, []);
+
+  if (token === undefined) {
+    // Still reading localStorage on first client render — avoid a login-screen flash.
+    return <div className="min-h-screen bg-black" />;
+  }
+
+  if (!token) {
+    return <AdminLoginScreen onLoggedIn={(t) => setToken(t)} />;
+  }
+
+  return <AdminDashboard />;
 }

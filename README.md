@@ -47,7 +47,7 @@ npm install
 ```bash
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) (or your configured port) with your browser.
+Open [http://localhost:4000](http://localhost:4000) with your browser. Port 4000 is pinned in `package.json` so this never collides with the unrelated root shell app, which also defaults to port 3000.
 
 ---
 

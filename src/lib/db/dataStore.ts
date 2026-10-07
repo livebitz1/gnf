@@ -18,6 +18,25 @@ import {
 } from "./mockDb";
 import { executeD1Query } from "./d1Client";
 
+export interface FriendshipRecord {
+  id: string;
+  senderId: string;
+  senderGamertag: string;
+  senderAvatar?: string;
+  senderBio?: string;
+  senderWinRate?: number;
+  senderCupsWon?: number;
+  receiverId: string;
+  receiverGamertag: string;
+  receiverAvatar?: string;
+  receiverBio?: string;
+  receiverWinRate?: number;
+  receiverCupsWon?: number;
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED';
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DataStoreState {
   banners: HeroBannerRecord[];
   champions: ChampionRecord[];
@@ -26,6 +45,7 @@ export interface DataStoreState {
   liveMatches: LiveMatchRecord[];
   registrations: RegistrationRecord[];
   users: UserRecord[];
+  friendships: FriendshipRecord[];
   lastUpdated: string;
 }
 
@@ -43,6 +63,7 @@ function getInitialState(): DataStoreState {
     liveMatches: [...initialLiveMatches],
     registrations: [...initialRegistrations],
     users: [...initialUsers],
+    friendships: [],
     lastUpdated: new Date().toISOString(),
   };
 }
@@ -62,6 +83,7 @@ function loadFromDisk(): DataStoreState {
         liveMatches: Array.isArray(parsed.liveMatches) ? parsed.liveMatches : [...initialLiveMatches],
         registrations: Array.isArray(parsed.registrations) ? parsed.registrations : [...initialRegistrations],
         users: Array.isArray(parsed.users) ? parsed.users : [...initialUsers],
+        friendships: Array.isArray(parsed.friendships) ? parsed.friendships : [],
         lastUpdated: parsed.lastUpdated || new Date().toISOString(),
       };
       return memoryState;
@@ -227,13 +249,20 @@ export const DataStore = {
       }
     } catch (e) {}
 
+    if (!Array.isArray(state.registrations)) {
+      state.registrations = [];
+    }
+    if (!Array.isArray(state.tournaments)) {
+      state.tournaments = [];
+    }
+
     // Ensure filledSlots dynamically matches real-time registrations count
     const regCounts = new Map<string, number>();
     state.registrations.forEach((r) => {
-      if (r.tournamentId) {
+      if (r && r.tournamentId) {
         regCounts.set(r.tournamentId, (regCounts.get(r.tournamentId) || 0) + 1);
       }
-      if (r.tournamentTitle) {
+      if (r && r.tournamentTitle) {
         regCounts.set(r.tournamentTitle, (regCounts.get(r.tournamentTitle) || 0) + 1);
       }
     });
@@ -304,6 +333,29 @@ export const DataStore = {
     state.tournaments = state.tournaments.filter((t) => t.id !== id);
     saveToDisk(state);
     executeD1Query("DELETE FROM tournaments WHERE id = ?", [id]).catch(() => {});
+    return state.tournaments;
+  },
+
+  async updateTournamentPartial(id: string, updates: Partial<TournamentRecord>): Promise<TournamentRecord[]> {
+    const state = loadFromDisk();
+    const idx = state.tournaments.findIndex((t) => t.id === id);
+    if (idx >= 0) {
+      state.tournaments[idx] = { ...state.tournaments[idx], ...updates };
+
+      if (updates.status === "COMPLETED") {
+        state.registrations.forEach((r) => {
+          if (r.tournamentId === id || r.tournamentTitle === state.tournaments[idx].title) {
+            r.status = "COMPLETED" as any;
+          }
+        });
+      }
+
+      saveToDisk(state);
+
+      if (updates.status) {
+        executeD1Query("UPDATE tournaments SET status = ? WHERE id = ?", [updates.status, id]).catch(() => {});
+      }
+    }
     return state.tournaments;
   },
 
@@ -504,9 +556,20 @@ export const DataStore = {
 
   async saveRegistration(reg: RegistrationRecord): Promise<RegistrationRecord[]> {
     const state = loadFromDisk();
-    const idx = state.registrations.findIndex((r) => r.id === reg.id);
+    const idx = state.registrations.findIndex(
+      (r) =>
+        r.id === reg.id ||
+        (reg.userId &&
+          r.userId === reg.userId &&
+          ((reg.tournamentId && r.tournamentId === reg.tournamentId) ||
+            r.tournamentTitle === reg.tournamentTitle))
+    );
     if (idx >= 0) {
-      state.registrations[idx] = reg;
+      state.registrations[idx] = {
+        ...state.registrations[idx],
+        ...reg,
+        id: state.registrations[idx].id,
+      };
     } else {
       state.registrations.unshift(reg);
     }
@@ -741,6 +804,64 @@ export const DataStore = {
     return user;
   },
 
+  async updateUserPushToken(userId: string, pushToken: string): Promise<boolean> {
+    const state = loadFromDisk();
+    const user = state.users.find(
+      (u) => u.id === userId || (u.id && u.id.toLowerCase() === userId.toLowerCase())
+    );
+    if (user) {
+      user.pushToken = pushToken;
+    }
+    // Also attach to registrations for this user
+    for (const reg of state.registrations) {
+      if (reg.userId === userId || (reg.userId && reg.userId.toLowerCase() === userId.toLowerCase())) {
+        reg.pushToken = pushToken;
+      }
+    }
+    saveToDisk(state);
+    return true;
+  },
+
+  async getAllPushTokens(gameType?: string): Promise<string[]> {
+    const state = loadFromDisk();
+    const tokenSet = new Set<string>();
+
+    if (gameType && gameType !== "ALL") {
+      // Filter by players registered for this gameType
+      for (const reg of state.registrations) {
+        if (
+          reg.gameType === gameType &&
+          reg.pushToken &&
+          typeof reg.pushToken === "string" &&
+          reg.pushToken.trim()
+        ) {
+          tokenSet.add(reg.pushToken.trim());
+        }
+      }
+    } else {
+      // All users and registrations
+      for (const u of state.users) {
+        if (u.pushToken && typeof u.pushToken === "string" && u.pushToken.trim()) {
+          tokenSet.add(u.pushToken.trim());
+        }
+      }
+      for (const r of state.registrations) {
+        if (r.pushToken && typeof r.pushToken === "string" && r.pushToken.trim()) {
+          tokenSet.add(r.pushToken.trim());
+        }
+      }
+    }
+
+    return Array.from(tokenSet);
+  },
+
+  async deleteAllUsers(): Promise<void> {
+    const state = loadFromDisk();
+    state.users = [];
+    saveToDisk(state);
+    executeD1Query("DELETE FROM users;").catch(() => {});
+  },
+
   // ==========================================
   // CHAMPIONS (1:1 Aspect Ratio Cards)
   // ==========================================
@@ -850,5 +971,199 @@ export const DataStore = {
       ).catch(() => {});
     }
     return state.champions;
+  },
+
+  // ==========================================
+  // FRIENDSHIPS (REAL DATABASE PERSISTENCE)
+  // ==========================================
+  async getFriendships(userId: string): Promise<{
+    friends: any[];
+    incomingRequests: any[];
+    outgoingRequests: any[];
+  }> {
+    const state = loadFromDisk();
+    if (!Array.isArray(state.friendships)) state.friendships = [];
+
+    const cleanUserId = (userId || '').trim().toLowerCase();
+    if (!cleanUserId) return { friends: [], incomingRequests: [], outgoingRequests: [] };
+
+    const accepted = state.friendships.filter(
+      (f) =>
+        f.status === 'ACCEPTED' &&
+        (f.senderId.toLowerCase() === cleanUserId ||
+          f.receiverId.toLowerCase() === cleanUserId ||
+          f.senderGamertag.toLowerCase() === cleanUserId ||
+          f.receiverGamertag.toLowerCase() === cleanUserId)
+    );
+
+    const friends = accepted.map((f) => {
+      const isSender =
+        f.senderId.toLowerCase() === cleanUserId ||
+        f.senderGamertag.toLowerCase() === cleanUserId;
+      return {
+        id: isSender ? f.receiverId : f.senderId,
+        gamertag: isSender ? f.receiverGamertag : f.senderGamertag,
+        fullName: isSender ? f.receiverGamertag : f.senderGamertag,
+        avatarUrl: isSender ? f.receiverAvatar : f.senderAvatar,
+        bio: (isSender ? f.receiverBio : f.senderBio) || 'GNF Esports Competitor',
+        status: 'ONLINE',
+        gamePlaying: 'Online • Ready to Play',
+        winRate: (isSender ? f.receiverWinRate : f.senderWinRate) || 75,
+        matchesPlayed: 12,
+        cupsWon: (isSender ? f.receiverCupsWon : f.senderCupsWon) || 1,
+        friendshipSince: f.updatedAt || f.createdAt,
+      };
+    });
+
+    const incomingRequests = state.friendships
+      .filter(
+        (f) =>
+          f.status === 'PENDING' &&
+          (f.receiverId.toLowerCase() === cleanUserId ||
+            f.receiverGamertag.toLowerCase() === cleanUserId)
+      )
+      .map((f) => ({
+        id: f.id,
+        senderId: f.senderId,
+        senderGamertag: f.senderGamertag,
+        senderAvatar: f.senderAvatar,
+        senderBio: f.senderBio,
+        senderWinRate: f.senderWinRate || 75,
+        senderCupsWon: f.senderCupsWon || 0,
+        receiverId: f.receiverId,
+        receiverGamertag: f.receiverGamertag,
+        type: 'INCOMING' as const,
+        createdAt: f.createdAt,
+      }));
+
+    const outgoingRequests = state.friendships
+      .filter(
+        (f) =>
+          f.status === 'PENDING' &&
+          (f.senderId.toLowerCase() === cleanUserId ||
+            f.senderGamertag.toLowerCase() === cleanUserId)
+      )
+      .map((f) => ({
+        id: f.id,
+        senderId: f.senderId,
+        senderGamertag: f.senderGamertag,
+        receiverId: f.receiverId,
+        receiverGamertag: f.receiverGamertag,
+        receiverAvatar: f.receiverAvatar,
+        type: 'OUTGOING' as const,
+        createdAt: f.createdAt,
+      }));
+
+    return { friends, incomingRequests, outgoingRequests };
+  },
+
+  async sendFriendRequest(data: {
+    senderId: string;
+    senderGamertag: string;
+    senderAvatar?: string;
+    senderBio?: string;
+    senderWinRate?: number;
+    senderCupsWon?: number;
+    receiverId: string;
+    receiverGamertag: string;
+    receiverAvatar?: string;
+    receiverBio?: string;
+    receiverWinRate?: number;
+    receiverCupsWon?: number;
+  }): Promise<{ success: boolean; message: string; record?: FriendshipRecord }> {
+    const state = loadFromDisk();
+    if (!Array.isArray(state.friendships)) state.friendships = [];
+
+    const cleanSender = (data.senderGamertag || data.senderId || '').toLowerCase();
+    const cleanReceiver = (data.receiverGamertag || data.receiverId || '').toLowerCase();
+
+    const existing = state.friendships.find(
+      (f) =>
+        ((f.senderId === data.senderId && f.receiverId === data.receiverId) ||
+          (f.senderId === data.receiverId && f.receiverId === data.senderId) ||
+          (f.senderGamertag.toLowerCase() === cleanSender &&
+            f.receiverGamertag.toLowerCase() === cleanReceiver) ||
+          (f.senderGamertag.toLowerCase() === cleanReceiver &&
+            f.receiverGamertag.toLowerCase() === cleanSender))
+    );
+
+    if (existing) {
+      if (existing.status === 'ACCEPTED') {
+        return { success: false, message: `${data.receiverGamertag} is already in your friends list.` };
+      }
+      if (existing.status === 'PENDING') {
+        if (existing.senderId === data.receiverId || existing.senderGamertag.toLowerCase() === cleanReceiver) {
+          existing.status = 'ACCEPTED';
+          existing.updatedAt = new Date().toISOString();
+          saveToDisk(state);
+          return { success: true, message: `Mutual request! ${data.receiverGamertag} is now your friend.`, record: existing };
+        }
+        return { success: false, message: `Friend request already pending.` };
+      }
+    }
+
+    const newRecord: FriendshipRecord = {
+      id: `req-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      senderId: data.senderId,
+      senderGamertag: data.senderGamertag,
+      senderAvatar: data.senderAvatar,
+      senderBio: data.senderBio,
+      senderWinRate: data.senderWinRate,
+      senderCupsWon: data.senderCupsWon,
+      receiverId: data.receiverId,
+      receiverGamertag: data.receiverGamertag,
+      receiverAvatar: data.receiverAvatar,
+      receiverBio: data.receiverBio,
+      receiverWinRate: data.receiverWinRate,
+      receiverCupsWon: data.receiverCupsWon,
+      status: 'PENDING',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    state.friendships.unshift(newRecord);
+    saveToDisk(state);
+
+    return { success: true, message: `Friend request sent to ${data.receiverGamertag}!`, record: newRecord };
+  },
+
+  async respondFriendRequest(requestId: string, action: 'ACCEPT' | 'DECLINE' | 'CANCEL'): Promise<{ success: boolean }> {
+    const state = loadFromDisk();
+    if (!Array.isArray(state.friendships)) state.friendships = [];
+
+    const idx = state.friendships.findIndex((f) => f.id === requestId);
+    if (idx === -1) return { success: false };
+
+    if (action === 'ACCEPT') {
+      state.friendships[idx].status = 'ACCEPTED';
+      state.friendships[idx].updatedAt = new Date().toISOString();
+    } else {
+      state.friendships.splice(idx, 1);
+    }
+
+    saveToDisk(state);
+    return { success: true };
+  },
+
+  async removeFriendship(userId: string, friendId: string): Promise<{ success: boolean }> {
+    const state = loadFromDisk();
+    if (!Array.isArray(state.friendships)) state.friendships = [];
+
+    const uId = (userId || '').toLowerCase();
+    const fId = (friendId || '').toLowerCase();
+
+    state.friendships = state.friendships.filter(
+      (f) =>
+        !(
+          f.status === 'ACCEPTED' &&
+          ((f.senderId.toLowerCase() === uId && f.receiverId.toLowerCase() === fId) ||
+            (f.senderId.toLowerCase() === fId && f.receiverId.toLowerCase() === uId) ||
+            (f.senderGamertag.toLowerCase() === uId && f.receiverGamertag.toLowerCase() === fId) ||
+            (f.senderGamertag.toLowerCase() === fId && f.receiverGamertag.toLowerCase() === uId))
+        )
+    );
+
+    saveToDisk(state);
+    return { success: true };
   },
 };

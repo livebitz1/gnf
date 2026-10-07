@@ -11,7 +11,7 @@ export interface TournamentRecord {
   maxSlots: number;
   filledSlots: number;
   region: string;
-  status: "OPEN" | "REGISTRATION_CLOSED" | "LIVE" | "COMPLETED";
+  status: "OPEN" | "REGISTRATION_CLOSED" | "LIVE" | "COMPLETED" | "REMOVED";
   matchStartTime: string;
 }
 
@@ -31,6 +31,7 @@ export interface RegistrationRecord {
   contactHandle: string;
   contactType: "DISCORD" | "WHATSAPP";
   deviceInfo?: string;
+  pushToken?: string;
   status: "PENDING_APPROVAL" | "APPROVED" | "REJECTED" | "CHECKED_IN";
   rejectionReason?: string;
   roomId?: string;
@@ -108,7 +109,7 @@ export const initialGames: GameRecord[] = [
   },
 ];
 
-// Clean Initial Production Databases
+// Clean Empty Tournaments Queue (Only tournaments created via Admin Panel)
 export const initialTournaments: TournamentRecord[] = [];
 
 // Clean Empty Registrations Queue (Waiting for real player submissions)
@@ -122,6 +123,7 @@ export interface UserRecord {
   fullName?: string;
   bio?: string;
   avatarUrl?: string;
+  pushToken?: string;
   coins: number;
   winRate: number;
   matchesPlayed: number;
@@ -151,43 +153,26 @@ export interface LiveMatchRecord {
 
 export const initialLiveMatches: LiveMatchRecord[] = [
   {
-    id: "live-arena-val",
-    title: "Valorant • Semifinals",
+    id: "live-vs-1",
+    title: "Championship • Grand Finals",
     stage: "Map 1: Ascent",
     gameType: "VALORANT",
     team1Name: "Team Nova",
     team1Tag: "NOVA",
     team1Color: "#6366F1",
-    team2Name: "Vortex",
-    team2Tag: "VTX",
+    team2Name: "Shadow Clan",
+    team2Tag: "SHD",
     team2Color: "#FF2E93",
     streamUrl: "https://www.youtube.com",
-    viewerCount: "1,420 Watching",
-    isLive: true,
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "live-arena-bgmi",
-    title: "BGMI • Grand Finals",
-    stage: "Match 4: Erangel",
-    gameType: "BGMI",
-    team1Name: "Soul Esports",
-    team1Tag: "SOUL",
-    team1Color: "#10B981",
-    team2Name: "GodLike",
-    team2Tag: "GODL",
-    team2Color: "#F59E0B",
-    streamUrl: "https://www.youtube.com",
-    viewerCount: "3,890 Watching",
+    viewerCount: "2,450 Watching",
     isLive: true,
     updatedAt: new Date().toISOString(),
   },
 ];
 
-export const initialLiveMatch: LiveMatchRecord = initialLiveMatches[0];
+export const initialLiveMatch: LiveMatchRecord | null = initialLiveMatches[0];
 
 export interface HeroBannerRecord {
-
   id: string;
   title: string;
   subtitle?: string;
@@ -204,37 +189,40 @@ export interface HeroBannerRecord {
 
 export const initialHeroBanners: HeroBannerRecord[] = [
   {
-    id: "banner-val",
-    title: "Valorant Premier League",
-    subtitle: "Season 4 Finals",
+    id: "banner-val-1",
+    title: "Valorant Premier Showdown",
+    subtitle: "Weekly 5v5 Championship • Free Entry",
     game: "VALORANT",
-    imageUrl: "https://8b4cf30cd85d25da2d64bd3e7f54b74d.r2.cloudflarestorage.com/gamernotfound/valorant_banner.png",
+    imageUrl: "",
     ctaColor: "#FF2E93",
     ctaText: "Join Tournament",
+    targetTournamentId: "",
     isActive: true,
     displayOrder: 1,
     createdAt: new Date().toISOString(),
   },
   {
-    id: "banner-tekken",
-    title: "Tekken 8 Global Battle",
-    subtitle: "Iron Fist Showdown",
-    game: "TEKKEN",
-    imageUrl: "https://8b4cf30cd85d25da2d64bd3e7f54b74d.r2.cloudflarestorage.com/gamernotfound/tekken_banner.png",
-    ctaColor: "#6366F1",
-    ctaText: "Join Tournament",
+    id: "banner-bgmi-1",
+    title: "BGMI Master Series",
+    subtitle: "Squad Battle Royale Cup • ₹50,000 Pool",
+    game: "BGMI",
+    imageUrl: "",
+    ctaColor: "#F59E0B",
+    ctaText: "Register Squad",
+    targetTournamentId: "",
     isActive: true,
     displayOrder: 2,
     createdAt: new Date().toISOString(),
   },
   {
-    id: "banner-bgmi",
-    title: "BGMI Champion Series",
-    subtitle: "Squad Erangel Clash",
-    game: "BGMI",
-    imageUrl: "https://8b4cf30cd85d25da2d64bd3e7f54b74d.r2.cloudflarestorage.com/gamernotfound/bgmi_banner.png",
-    ctaColor: "#F59E0B",
-    ctaText: "Join Tournament",
+    id: "banner-tk8-1",
+    title: "Tekken 8 Iron Fist Arena",
+    subtitle: "1v1 Elimination Showdown",
+    game: "TEKKEN 8",
+    imageUrl: "",
+    ctaColor: "#6366F1",
+    ctaText: "Enter Arena",
+    targetTournamentId: "",
     isActive: true,
     displayOrder: 3,
     createdAt: new Date().toISOString(),
@@ -257,39 +245,39 @@ export interface ChampionRecord {
 
 export const initialChampions: ChampionRecord[] = [
   {
-    id: "champ-1",
-    title: "Valorant Premier MVP",
-    playerName: "@ShadowKing",
+    id: "champ-val-1",
+    title: "Valorant MVP",
+    playerName: "@ViperAce",
     game: "VALORANT",
-    imageUrl: "https://8b4cf30cd85d25da2d64bd3e7f54b74d.r2.cloudflarestorage.com/gamernotfound/valorant_banner.png",
-    achievement: "₹45,000 Won • 88% WR",
+    imageUrl: "",
+    achievement: "₹50,000 Won • Grand MVP",
     badgeText: "#1 MVP",
-    badgeColor: "#F59E0B",
+    badgeColor: "#FF2E93",
     isActive: true,
     displayOrder: 1,
     createdAt: new Date().toISOString(),
   },
   {
-    id: "champ-2",
-    title: "BGMI Clash Champions",
-    playerName: "Team Soul",
+    id: "champ-bgmi-1",
+    title: "BGMI Conqueror",
+    playerName: "@SoulMortal",
     game: "BGMI",
-    imageUrl: "https://8b4cf30cd85d25da2d64bd3e7f54b74d.r2.cloudflarestorage.com/gamernotfound/bgmi_banner.png",
-    achievement: "₹35,000 Won • 14 Chicken Dinners",
-    badgeText: "#1 SQUAD",
-    badgeColor: "#FF2E93",
+    imageUrl: "",
+    achievement: "24 Kills • Champion Chicken",
+    badgeText: "CONQUEROR",
+    badgeColor: "#F59E0B",
     isActive: true,
     displayOrder: 2,
     createdAt: new Date().toISOString(),
   },
   {
-    id: "champ-3",
-    title: "Tekken 8 Master",
-    playerName: "@VortexAce",
+    id: "champ-tk8-1",
+    title: "Iron Fist King",
+    playerName: "@ArslanAsh",
     game: "TEKKEN 8",
-    imageUrl: "https://8b4cf30cd85d25da2d64bd3e7f54b74d.r2.cloudflarestorage.com/gamernotfound/tekken_banner.png",
-    achievement: "₹25,000 Won • Undefeated",
-    badgeText: "CHAMPION",
+    imageUrl: "",
+    achievement: "Undefeated • 12-0 Run",
+    badgeText: "KING",
     badgeColor: "#6366F1",
     isActive: true,
     displayOrder: 3,

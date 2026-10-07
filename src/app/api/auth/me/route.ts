@@ -98,24 +98,41 @@ export async function POST(request: Request) {
     }
 
     let user = await DataStore.findUser(finalUserId);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: "User not found" },
-        { status: 404, headers: corsHeaders }
-      );
+    if (!user && (gamertag || fullName || body.email)) {
+      user = await DataStore.findUser(body.email || gamertag || fullName);
     }
 
-    if (typeof bio === "string") {
-      user.bio = bio.trim();
-    }
-    if (typeof avatarUrl === "string") {
-      user.avatarUrl = avatarUrl.trim();
-    }
-    if (typeof fullName === "string" && fullName.trim()) {
-      user.fullName = fullName.trim();
-    }
-    if (typeof gamertag === "string" && gamertag.trim()) {
-      user.gamertag = gamertag.trim();
+    if (!user) {
+      // Auto-upsert new user profile so user is never blocked
+      const cleanTag = (gamertag || "Player").trim();
+      user = {
+        id: finalUserId,
+        email: body.email || `${cleanTag.toLowerCase().replace(/[^a-z0-9]/g, "") || "user"}_${Date.now()}@gnf.gg`,
+        passwordHash: "",
+        gamertag: cleanTag,
+        fullName: (fullName || cleanTag).trim(),
+        bio: typeof bio === "string" ? bio.trim() : "",
+        avatarUrl: typeof avatarUrl === "string" ? avatarUrl.trim() : "",
+        coins: 1000,
+        winRate: 0,
+        matchesPlayed: 0,
+        cupsWon: 0,
+        role: "USER",
+        createdAt: new Date().toISOString(),
+      };
+    } else {
+      if (typeof bio === "string") {
+        user.bio = bio.trim();
+      }
+      if (typeof avatarUrl === "string") {
+        user.avatarUrl = avatarUrl.trim();
+      }
+      if (typeof fullName === "string" && fullName.trim()) {
+        user.fullName = fullName.trim();
+      }
+      if (typeof gamertag === "string" && gamertag.trim()) {
+        user.gamertag = gamertag.trim();
+      }
     }
 
     await DataStore.saveUser(user);

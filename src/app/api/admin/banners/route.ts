@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { DataStore } from "@/lib/db/dataStore";
 import { HeroBannerRecord } from "@/lib/db/mockDb";
+import { requireAdmin } from "@/lib/auth/requireAuth";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,6 +38,9 @@ export async function GET() {
 
 // POST /api/admin/banners - Create new or update existing hero banner
 export async function POST(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const bannerId = body.id || "banner-" + Date.now();
@@ -76,6 +80,9 @@ export async function POST(request: Request) {
 
 // PATCH /api/admin/banners - Toggle active status or reorder
 export async function PATCH(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { id, isActive, displayOrder } = body;
@@ -107,6 +114,9 @@ export async function PATCH(request: Request) {
 
 // DELETE /api/admin/banners - Delete a hero banner
 export async function DELETE(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const url = new URL(request.url);
     let id = url.searchParams.get("id");

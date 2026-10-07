@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { requireAdmin } from "@/lib/auth/requireAuth";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,6 +20,9 @@ export async function OPTIONS() {
 // POST /api/admin/banners/upload
 // Accepts multipart/form-data or JSON { imageBase64, fileName, contentType }
 export async function POST(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const contentType = request.headers.get("content-type") || "";
     let fileBuffer: Buffer | null = null;

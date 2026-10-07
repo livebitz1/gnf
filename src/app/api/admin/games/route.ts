@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { DataStore } from "@/lib/db/dataStore";
 import { GameRecord } from "@/lib/db/mockDb";
+import { requireAdmin } from "@/lib/auth/requireAuth";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -61,6 +62,9 @@ export async function GET(request: Request) {
 
 // POST /api/admin/games - Create new Game
 export async function POST(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     if (!body.name || !body.tag) {
@@ -103,6 +107,9 @@ export async function POST(request: Request) {
 
 // PATCH /api/admin/games - Toggle active or update game
 export async function PATCH(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { id, isActive, name, tag, color, cardBg, borderColor, displayOrder } = body;
@@ -150,6 +157,9 @@ export async function PATCH(request: Request) {
 
 // DELETE /api/admin/games?id=...
 export async function DELETE(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");

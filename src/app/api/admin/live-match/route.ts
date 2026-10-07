@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { DataStore } from "@/lib/db/dataStore";
 import { LiveMatchRecord } from "@/lib/db/mockDb";
+import { requireAdmin } from "@/lib/auth/requireAuth";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,6 +40,9 @@ export async function GET() {
 
 // POST /api/admin/live-match - Create new or update existing live VS card
 export async function POST(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const matchId = body.id || `live-vs-${Date.now()}`;
@@ -85,6 +89,9 @@ export async function PATCH(request: Request) {
 
 // DELETE /api/admin/live-match - Delete a live match card
 export async function DELETE(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
   try {
     const url = new URL(request.url);
     let id = url.searchParams.get("id");
