@@ -162,7 +162,7 @@ export const DataStore = {
     saveToDisk(state);
 
     // Sync to Cloudflare D1 asynchronously
-    executeD1Query(
+    await executeD1Query(
       `INSERT INTO hero_banners (id, title, subtitle, game, image_url, cta_color, cta_text, target_tournament_id, target_url, is_active, display_order, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
@@ -200,7 +200,7 @@ export const DataStore = {
     state.banners = state.banners.filter((b) => b.id !== id);
     saveToDisk(state);
 
-    executeD1Query("DELETE FROM hero_banners WHERE id = ?", [id]).catch(() => {});
+    await executeD1Query("DELETE FROM hero_banners WHERE id = ?", [id]).catch(() => {});
     return state.banners;
   },
 
@@ -213,7 +213,7 @@ export const DataStore = {
       saveToDisk(state);
 
       const banner = state.banners[idx];
-      executeD1Query(
+      await executeD1Query(
         `UPDATE hero_banners SET is_active = ?, display_order = ? WHERE id = ?`,
         [banner.isActive ? 1 : 0, banner.displayOrder, id]
       ).catch(() => {});
@@ -288,7 +288,7 @@ export const DataStore = {
     }
     saveToDisk(state);
 
-    executeD1Query(
+    await executeD1Query(
       `INSERT INTO tournaments (
         id, title, subtitle, game_type, prize_pool, first_prize, second_prize,
         third_prize, entry_fee, max_slots, filled_slots, region, status, match_start_time
@@ -332,7 +332,7 @@ export const DataStore = {
     const state = loadFromDisk();
     state.tournaments = state.tournaments.filter((t) => t.id !== id);
     saveToDisk(state);
-    executeD1Query("DELETE FROM tournaments WHERE id = ?", [id]).catch(() => {});
+    await executeD1Query("DELETE FROM tournaments WHERE id = ?", [id]).catch(() => {});
     return state.tournaments;
   },
 
@@ -353,7 +353,7 @@ export const DataStore = {
       saveToDisk(state);
 
       if (updates.status) {
-        executeD1Query("UPDATE tournaments SET status = ? WHERE id = ?", [updates.status, id]).catch(() => {});
+        await executeD1Query("UPDATE tournaments SET status = ? WHERE id = ?", [updates.status, id]).catch(() => {});
       }
     }
     return state.tournaments;
@@ -395,7 +395,7 @@ export const DataStore = {
     state.games.sort((a, b) => a.displayOrder - b.displayOrder);
     saveToDisk(state);
 
-    executeD1Query(
+    await executeD1Query(
       `INSERT INTO games (id, name, tag, color, card_bg, border_color, is_active, display_order)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
@@ -425,7 +425,7 @@ export const DataStore = {
     const state = loadFromDisk();
     state.games = state.games.filter((g) => g.id !== id);
     saveToDisk(state);
-    executeD1Query("DELETE FROM games WHERE id = ?", [id]).catch(() => {});
+    await executeD1Query("DELETE FROM games WHERE id = ?", [id]).catch(() => {});
     return state.games;
   },
 
@@ -469,7 +469,7 @@ export const DataStore = {
     }
     saveToDisk(state);
 
-    executeD1Query(
+    await executeD1Query(
       `INSERT INTO live_matches (id, title, stage, game_type, team1_name, team1_tag, team1_color, team2_name, team2_tag, team2_color, stream_url, viewer_count, is_live, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
@@ -511,7 +511,7 @@ export const DataStore = {
     const state = loadFromDisk();
     state.liveMatches = state.liveMatches.filter((m) => m.id !== id);
     saveToDisk(state);
-    executeD1Query("DELETE FROM live_matches WHERE id = ?", [id]).catch(() => {});
+    await executeD1Query("DELETE FROM live_matches WHERE id = ?", [id]).catch(() => {});
     return state.liveMatches;
   },
 
@@ -583,7 +583,7 @@ export const DataStore = {
     );
     if (tourneyIdx >= 0) {
       state.tournaments[tourneyIdx].filledSlots = Math.max(state.tournaments[tourneyIdx].filledSlots || 0, matchingCount);
-      executeD1Query(
+      await executeD1Query(
         "UPDATE tournaments SET filled_slots = ? WHERE id = ? OR title = ?",
         [state.tournaments[tourneyIdx].filledSlots, reg.tournamentId || "", reg.tournamentTitle || ""]
       ).catch(() => {});
@@ -591,7 +591,7 @@ export const DataStore = {
 
     saveToDisk(state);
 
-    executeD1Query(
+    await executeD1Query(
       `INSERT INTO registrations (
         id, tournament_id, tournament_title, game_type, user_id, user_gamertag,
         team_name, team_tag, captain_ign, captain_game_id, rank_tier, roster_json,
@@ -650,7 +650,7 @@ export const DataStore = {
       );
       if (tourneyIdx >= 0) {
         state.tournaments[tourneyIdx].filledSlots = remainingCount;
-        executeD1Query(
+        await executeD1Query(
           "UPDATE tournaments SET filled_slots = ? WHERE id = ? OR title = ?",
           [remainingCount, deletedReg.tournamentId || "", deletedReg.tournamentTitle || ""]
         ).catch(() => {});
@@ -658,7 +658,7 @@ export const DataStore = {
     }
 
     saveToDisk(state);
-    executeD1Query("DELETE FROM registrations WHERE id = ?", [id]).catch(() => {});
+    await executeD1Query("DELETE FROM registrations WHERE id = ?", [id]).catch(() => {});
     return state.registrations;
   },
 
@@ -753,7 +753,7 @@ export const DataStore = {
     }
     saveToDisk(state);
 
-    executeD1Query(
+    await executeD1Query(
       `INSERT INTO users (id, email, password_hash, gamertag, full_name, bio, avatar_url, coins, win_rate, matches_played, cups_won, role, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
@@ -859,7 +859,7 @@ export const DataStore = {
     const state = loadFromDisk();
     state.users = [];
     saveToDisk(state);
-    executeD1Query("DELETE FROM users;").catch(() => {});
+    await executeD1Query("DELETE FROM users;").catch(() => {});
   },
 
   // ==========================================
@@ -914,7 +914,7 @@ export const DataStore = {
     saveToDisk(state);
 
     // Sync to Cloudflare D1 asynchronously
-    executeD1Query(
+    await executeD1Query(
       `INSERT INTO champions (id, title, player_name, game, image_url, achievement, badge_text, badge_color, is_active, display_order, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
@@ -951,7 +951,7 @@ export const DataStore = {
     state.champions = state.champions.filter((c) => c.id !== id);
     saveToDisk(state);
 
-    executeD1Query("DELETE FROM champions WHERE id = ?", [id]).catch(() => {});
+    await executeD1Query("DELETE FROM champions WHERE id = ?", [id]).catch(() => {});
     return state.champions;
   },
 
@@ -965,7 +965,7 @@ export const DataStore = {
       saveToDisk(state);
 
       const champ = state.champions[idx];
-      executeD1Query(
+      await executeD1Query(
         `UPDATE champions SET is_active = ?, display_order = ? WHERE id = ?`,
         [champ.isActive ? 1 : 0, champ.displayOrder, id]
       ).catch(() => {});
